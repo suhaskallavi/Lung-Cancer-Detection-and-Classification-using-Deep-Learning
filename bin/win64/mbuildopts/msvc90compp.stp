@@ -1,0 +1,131 @@
+#  $Revision: 1.1.8.4 $
+#  Copyright 2007-2011 The MathWorks, Inc.
+
+sub msvc90compp 
+{
+    my $input = shift;
+    my $default_location = "C:\\Program Files (x86)\\Microsoft Visual Studio 9.0";
+    my $sdk_dir = "";
+    my $registry_lookup_fcn = $input->{"registry_lookup"};
+
+    # Attempt to find the Windows sdk that corresponds to VS2008
+    my $sdk_dir =  &$registry_lookup_fcn("SOFTWARE\\Microsoft\\Microsoft SDKs\\Windows\\" , "CurrentInstallFolder");
+
+    my @language_handled = ('C', 'CPP', 'COM');
+
+    my $hasRequiredFiles = sub {
+        my $rootDir = $_[0];
+        my $isValid = 0;
+        if ( $rootDir ne "" &&
+             -e "$rootDir\\VC\\bin\\cl.exe" &&
+             -e "$rootDir\\Common7\\IDE\\devenv.exe") {
+                my $oldPath = $ENV{'PATH'};
+                $ENV{'PATH'} = "$rootDir\\Common7\\IDE;$oldPath";
+                if (&correct_version("$rootDir\\VC\\bin\\cl.exe","15.0")) { 
+                    $isValid = 1; 
+                }
+                $ENV{'PATH'} = "$oldPath";
+        }
+        return $isValid;
+    };
+
+    my $locate_fcn = sub {
+        my @valid_locations = ();
+        my $candidate_location;
+
+        # Check install and location using the 32-bit CL.EXE; check for 64-bit
+        # compiler later.  This allows 32-bit-only installs to appear as 
+        # installed, then throw an error at selection-time.  
+        # This is easier to debug than not listing the compiler.
+
+        # Search the default environment variable location.               
+        # Since MSVC 2008 Professional ed. and the Express ed.
+        # use the same environment variable (VS90COMNTOOLS),
+        # use the directory structure to differentiate between the two.
+        $candidate_location = $ENV{'VS90COMNTOOLS'};
+        $candidate_location =~ s|\\+Common7\\+Tools\\*$||i;
+        if ( &$hasRequiredFiles($candidate_location) )
+        {
+             push(@valid_locations, $candidate_location);
+        }
+
+        # Search the registry. 
+        $candidate_location = &$registry_lookup_fcn("SOFTWARE\\Microsoft\\VisualStudio\\9.0\\" .
+                                            "Setup\\VC", "ProductDir");
+        $candidate_location =~ s|\\VC\\$||i; 
+        if ( &$hasRequiredFiles($candidate_location) )
+        { 
+             push(@valid_locations, $candidate_location);
+        }
+
+        # Search the default install location. 
+        $candidate_location = $default_location;
+        if ( &$hasRequiredFiles($candidate_location) )
+        { 
+             push(@valid_locations, $candidate_location);
+        }
+
+        return @valid_locations;
+    };
+
+    my $root_val = sub {
+        my $erred = 0;
+        my $err_msg, $warn_msg;
+        my $base_directory = shift;
+        if (!-e "$base_directory\\VC\\bin\\amd64\\cl.exe"){
+            $err_msg = "\n*****************************************************************************\n" .
+                  "  Error: Could not find the 64-bit compiler.  This may indicate that the \n" .
+                  "         \"X64 Compilers and Tools\" or the Microsoft Windows Software \n" .
+                  "         Development Kit (SDK) is not installed.  To build 64-bit applications/ \n" .
+                  "         components Microsoft Visual C++ 2008 requires that these two packages\n" .
+                  "         are installed properly. \n" .
+                  "*****************************************************************************\n";
+            $erred = 1;
+        }
+        my $sdk_location = &$registry_lookup_fcn("SOFTWARE\\Microsoft\\Microsoft SDKs\\Windows\\" , 
+                                  "CurrentInstallFolder");
+        if ($sdk_location eq "" ||
+            !-e "$sdk_location\\bin\\mt.exe"){
+            $err_msg = "\n*****************************************************************************\n" .
+                  "  Error: Could not find the Microsoft Windows Software Development Kit (SDK). \n" .
+                  "         This may indicate that the Microsoft Windows Software Development \n" .
+                  "         Kit (SDK) or the \"X64 Compilers and Tools\" is not installed.  \n" .
+                  "         To build 64-bit application/components Microsoft Visual C++ 2008 \n" .
+                  "         requires that these two packages are installed properly. \n" .
+                  "*****************************************************************************\n";
+            $erred = 1;
+        }
+        
+        if (!$erred) {
+            $warn_msg = "\n" .
+                      "****************************************************************************\n" .
+                      "  Warning: Applications/components generated using Microsoft Visual Studio  \n" .
+                      "           2008 require that the Microsoft Visual Studio 2008 run-time      \n" .
+                      "           libraries be available on the computer used for deployment.      \n" .
+                      "           To redistribute your applications/components, be sure that the   \n" .
+                      "           deployment machine has these run-time libraries.                 \n" .
+                      "****************************************************************************\n";
+        }
+
+        return ($err_msg, $warn_msg);
+    };
+
+# In the case of the VS2008 compiler the linker directory is used to specify
+# the location of the SDK
+
+    return {
+        "vendor_name"      => "Microsoft Visual C++ 2008 SP1",
+        "version"          => "",                          #This version is left blank intentionally. 
+        "group_id"         => "MSVC",
+        "serial"           => 6.0,
+        "root_var"         => "VSINSTALLDIR",
+        "optfile_name"     => "msvc90compp.bat",
+        "default_location" => $default_location,
+        "language_handled" => \@language_handled,
+        "root_val"         => $root_val,
+        "link_val"         => $sdk_dir,
+        "locate"           => $locate_fcn,
+        "post_setup_hook"  => $post_setup_hook,
+        };
+}
+1;
