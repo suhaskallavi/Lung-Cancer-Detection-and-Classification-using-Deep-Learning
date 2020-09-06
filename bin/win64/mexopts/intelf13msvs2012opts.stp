@@ -1,0 +1,109 @@
+# $Revision: 1.1.6.2 $  $Date: 2013/04/25 04:23:18 $
+#  Copyright 2012 The MathWorks, Inc.
+
+use mexutils;
+
+sub intelf13msvs2012opts 
+{
+    #===================================================================
+    # intelf13msvs2012opts: Define where the Intel Visual Fortran 13.0
+    # compiler is installed.  Also sets language, version, and 
+    # environment variables.
+    #===================================================================
+
+    my $input = shift;
+    # This is where the vendor installs the compiler by default
+    my $default_location = "C:\\Program Files (x86)\\Intel\\Composer XE 2013";
+
+    # Return language/technology this compiler compiles.
+    my @language_handled = ('FORTRAN');    
+
+    # Find MSVC110
+    my $msvc110_record = callstpfile($input->{'matlab_bin'}."/mexopts/","msvc110opts.stp");
+    my $msvc110_location_fcn = $msvc110_record->{"locate"};
+    my @msvc110_locations = &$msvc110_location_fcn;
+    my $msvc110_dir = pop @msvc110_locations;
+    my $msvc110_sdk_dir = $msvc110_record->{"link_val"};
+
+    my $locate_fcn = sub {
+        #===================================================================
+        # locate_fcn: A local function to return potential location where this compiler
+        # is installed.  The return value is used to set the COMPILER_ROOT 
+        # directory. It makes three guesses: The system path, the registry, and
+        # the default location where the compiler tries to install itself.
+        #===================================================================
+
+        my @valid_locations = ();
+        my $registry_lookup_fcn = $input->{"registry_lookup"};
+        my $candidate_location;
+
+        my $is_valid_root_fcn = sub {
+            my $candidate_location = shift;
+            my $isvalid = 0;
+            if ($candidate_location ne "" &&  
+                -e "$candidate_location\\Bin\\Intel64\\ifort.exe"){
+                if (&correct_version("$candidate_location\\Bin\\Intel64\\ifort.exe","13.")){ 
+                    $isvalid = 1;
+                }
+            }
+            return $isvalid;
+        };
+
+        # Search the default environment variable location.
+        $candidate_location = $ENV{'IFORT_COMPILER13'};
+        if (&$is_valid_root_fcn($candidate_location)) {
+            push(@valid_locations, $candidate_location);
+        }
+
+        # Search the registry.
+        # The 32-bit version of Perl will always query for keys in 
+        # SOFTWARE\\Wow6432Node instead of just SOFTWARE\\.
+        # This is fine since Intel Visual Fortran is a 32-bit app
+        $candidate_location = find_highest_build_of( "intel_fortran_13", "13[0-9]" );
+        if (&$is_valid_root_fcn($candidate_location)) {
+            push(@valid_locations, $candidate_location);
+        }
+
+        # Search the default install location.
+        $candidate_location = $default_location;
+        if (&$is_valid_root_fcn($candidate_location)) {
+            push(@valid_locations, $candidate_location);
+        }
+
+        return @valid_locations;
+   };
+
+
+    my $root_val = sub {
+        my $base_directory = shift;
+        my $err_msg;
+        if (!$msvc110_dir){       
+            $err_msg = "\nError: Microsoft Visual Studio 2012 Professional Edition was\n" .
+                         "       not found by mex -setup.\n" .
+                         "       The Microsoft Visual Studio 2012 Professional Edition\n" .
+                         "       linker is required to build Intel Fortran MEX-files.  Please\n" .
+                         "       make sure that Microsoft Visual Studio 2012 Professional\n" .
+                         "       Edition is installed properly.\n\n";
+        }
+
+        return $err_msg;
+    };
+
+
+    return {
+        "vendor_name"      => "Intel Visual Fortran",
+        "version"          => "13.0",
+        "group_id"         => "INTELF",
+        "serial"           => 13.0,
+        "root_var"         => "IFORT_COMPILER13",
+        "linker_var"       => "VS110COMNTOOLS",
+        "optfile_name"     => "intelf13msvs2012opts.bat",
+        "linker_optfile_name" => "msvc110opts",
+        "default_location" => $default_location,
+        "language_handled" => \@language_handled,
+        "root_val"         => $root_val,
+        "link_val"         => $msvc110_sdk_dir,
+        "locate"           => $locate_fcn,
+        };
+}
+1;

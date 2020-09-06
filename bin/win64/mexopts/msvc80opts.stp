@@ -1,0 +1,108 @@
+#  $Revision: 1.1.6.10 $
+#  Copyright 2008-2011 The MathWorks, Inc.
+
+sub msvc80opts 
+{
+    my $input = shift;
+    my $default_location = "C:\\Program Files (x86)\\Microsoft Visual Studio 8";
+    my $registry_lookup_fcn = $input->{"registry_lookup"};
+
+    my @language_handled = ('C');
+    my $locate_fcn = sub {
+        my @valid_locations = ();
+        my $env_location;
+        my $registry_location;
+        my $candidate_location;
+
+        my $is_valid_root_fcn = sub {
+            my $candidate_location = shift;
+            my $isvalid = 0;
+            if ($candidate_location ne "" &&  
+                -e "$candidate_location\\VC\\bin\\cl.exe" &&
+                -e "$candidate_location\\Common7\\IDE\\devenv.exe") {
+                $oldPath = $ENV{'PATH'};
+                $ENV{'PATH'} = "$candidate_location\\Common7\\IDE;$oldPath";
+                if (&correct_version("$candidate_location\\VC\\bin\\cl.exe","14.0")){ 
+                    $isvalid = 1;
+                }
+                $ENV{'PATH'} = "$oldPath";
+            }
+            return $isvalid;
+        };
+
+        # Check install and location using the 32-bit CL.EXE; check for 64-bit
+        # compiler later.  This allows 32-bit-only installs to appear as 
+        # installed, then throw an error at selection-time.  
+        # This is easier to debug than not listing the compiler.
+
+        # Search the default environment variable location. 
+        # Since MSVC 2005 Professional ed. and the Express ed.
+        # use the same environment variable (VS80COMNTOOLS),
+        # use the directory structure to differentiate between the two.
+        $env_location = $ENV{'VS80COMNTOOLS'}; 
+        $env_location =~ s|\\+Common7\\+Tools\\*$||i; 
+        $candidate_location = $env_location;
+        if (&$is_valid_root_fcn($candidate_location)) {
+            push(@valid_locations, $candidate_location);
+        }
+
+        # Search the registry. 
+        $registry_location = &$registry_lookup_fcn("SOFTWARE\\Microsoft\\VisualStudio\\8.0\\" . 
+                                            "Setup\\VC", "ProductDir");
+        $registry_location =~ s|\\VC\\$||i; 
+        $candidate_location = $registry_location;
+        if (&$is_valid_root_fcn($candidate_location)) {
+            push(@valid_locations, $candidate_location);
+        }
+
+        # Search the default install location. 
+        $candidate_location = $default_location;
+        if (&$is_valid_root_fcn($candidate_location)) {
+            push(@valid_locations, $candidate_location);
+        }
+
+        return @valid_locations;
+    };
+
+    my $root_val = sub {
+        my $err_msg, $warn_msg;
+        my $base_directory = shift;
+        if (!-e "$base_directory\\VC\\bin\\amd64\\cl.exe"){
+            $err_msg = "\n" .
+                  "*****************************************************************************\n" .
+                  "  Error: Could not find the 64-bit compiler.  This may indicate that the \n" .
+                  "         \"X64 Compilers and Tools\" is not installed.  To build 64-bit \n" .
+                  "         MEX-files Microsoft Visual C++ 2005 requires that these tools are \n" .
+                  "         installed properly. \n" .
+                  "*****************************************************************************\n";
+        } else {
+            $warn_msg = "\n" .
+                  "***************************************************************************\n" .
+                  "  Warning: MEX-files generated using Microsoft Visual C++ 2005 require\n" .
+                  "           that Microsoft Visual Studio 2005 run-time libraries be \n" .
+                  "           available on the computer they are run on.\n" .
+                  "           If you plan to redistribute your MEX-files to other MATLAB\n" .
+                  "           users, be sure that they have the run-time libraries.\n" . 
+                  "***************************************************************************\n";
+        }
+
+        # Warn about upcoming deprecation of this compiler
+        print(mexDeprecationWarning("Microsoft Visual C++ 2005 SP1"));
+
+        return ( $err_msg, $warn_msg );
+    };
+
+    return {
+        "vendor_name"      => "Microsoft Visual C++ 2005 SP1",
+        "version"          => "",                          #This version is left blank intentionally.
+        "group_id"         => "MSVC",
+        "serial"           => 5.0,
+        "root_var"         => "VSINSTALLDIR",
+        "optfile_name"     => "msvc80opts.bat",
+        "default_location" => $default_location,
+        "language_handled" => \@language_handled,
+        "root_val"         => $root_val,
+        "locate"           => $locate_fcn,
+        };
+}
+1;

@@ -1,0 +1,107 @@
+# $Revision: 1.1.6.1 $  $Date: 2011/05/16 21:33:12 $
+#  Copyright 2011 The MathWorks, Inc.
+
+use mexutils;
+
+sub intelc12msvs2008opts 
+{
+    #===================================================================
+    # intelc12opts: Define where the Intel C++ compiler 12.0 is
+    # installed.  Also sets language, version, and environment variables.
+    #===================================================================
+
+    my $input = shift;
+    # This is where the vendor installs the compiler by default
+    my $default_location = "C:\\Program Files (x86)\\Intel\\ComposerXE-2011";
+                            
+    # Return language/technology this compiler compiles.
+    my @language_handled = ('C');    
+    
+    # Find MSVC90
+    my $msvc90_record = callstpfile($input->{'matlab_bin'}."/mexopts/","msvc90opts.stp");
+    my $msvc90_location_fcn = $msvc90_record->{"locate"};
+    my @msvc90_locations = &$msvc90_location_fcn;
+    my $msvc90_dir = pop @msvc90_locations;
+    my $msvc90_sdk_dir = $msvc90_record->{"link_val"};
+    
+    my $locate_fcn = sub {
+        #===================================================================
+        # locate_fcn: A local function to return potential location where this compiler
+        # is installed.  The return value is used to set the COMPILER_ROOT 
+        # directory. It makes three guesses: The system path, the registry, and
+        # the default location where the compiler tries to install itself.
+        #===================================================================
+
+        my @valid_locations = ();
+        my $registry_lookup_fcn = $input->{"registry_lookup"};
+        my $candidate_location;
+
+        my $is_valid_root_fcn = sub {
+            my $candidate_location = shift;
+            my $isvalid = 0;
+            if ($candidate_location ne "" &&  
+                -e "$candidate_location\\Bin\\Intel64\\icl.exe"){
+                if (&correct_version("$candidate_location\\Bin\\Intel64\\icl.exe","12.0")){
+                    $isvalid = 1;
+                }
+            }
+            return $isvalid;
+        };
+
+        # Search the default environment variable location.
+        $candidate_location = $ENV{'ICPP_COMPILER12'};
+        if (&$is_valid_root_fcn($candidate_location)) {
+            push(@valid_locations, $candidate_location);
+        }
+
+        # Search the registry.
+        # The 32-bit version of Perl will always query for keys in 
+        # SOFTWARE\\Wow6432Node instead of just SOFTWARE\\.
+        # This is fine since Intel C++ is a 32-bit app
+        $candidate_location = find_highest_build_of( "intel_c_12", "120" );
+        if (&$is_valid_root_fcn($candidate_location)) {
+            push(@valid_locations, $candidate_location);
+        }
+
+        # Search the default install location.
+        $candidate_location = $default_location;
+        if (&$is_valid_root_fcn($candidate_location)) {
+            push(@valid_locations, $candidate_location);
+        }
+
+        return @valid_locations;
+   };
+
+
+    my $root_val = sub {
+        my $base_directory = shift;
+        my $err_msg;
+        if (!$msvc90_dir){       
+            $err_msg = "\nError: Microsoft Visual Studio 2008 SP1 Professional Edition was not found\n".
+                         "       by mex -setup.\n" .
+                         "       The Microsoft Visual Studio 2008 SP1 Professional Edition linker is\n".
+                         "       required to build Intel C++ MEX-files.  Please make sure that\n" .
+                         "       Microsoft Visual Studio 2008 SP1 Professional Edition is installed\n" .
+                         "       properly.\n\n";
+        }
+
+        return $err_msg;
+    };
+
+
+    return {
+        "vendor_name"      => "Intel C++",
+        "version"          => "12.0",
+        "group_id"         => "INTELC",
+        "serial"           => 12.0,
+        "root_var"         => "ICPP_COMPILER12",
+        "optfile_name"     => "intelc12msvs2008opts.bat",
+        "linker_optfile_name" => "msvc90opts",
+        "default_location" => $default_location,
+        "language_handled" => \@language_handled,
+        "root_val"         => $root_val,
+        "link_val"         => $msvc90_sdk_dir,
+        "locate"           => $locate_fcn,
+        };
+}
+1;

@@ -1,0 +1,121 @@
+#  $Revision: 1.1.6.3 $
+#  Copyright 2010-2011 The MathWorks, Inc.
+
+sub mssdk71opts 
+{
+    my $input = shift;
+    my $default_location = "C:\\Program Files (x86)\\Microsoft Visual Studio 10.0";
+    my $sdk_dir = "";
+    my $registry_lookup_fcn = $input->{"registry_lookup"};
+
+    # Attempt to find the Windows sdk that corresponds to VS2010
+    my $sdk_dir =  &$registry_lookup_fcn("SOFTWARE\\Microsoft\\Microsoft SDKs\\Windows\\v7.1" , "InstallationFolder");
+
+    my @language_handled = ('C');
+    my $locate_fcn = sub {
+        my @valid_locations = ();
+        my $env_location;
+        my $registry_location;
+        my $candidate_location;
+
+        my $is_valid_root_fcn = sub {
+            #===================================================================
+            # is_valid_root_fcn: Validates the version and file structure of the
+            # candidate_location.
+            #
+            # Check install and location using the 32-bit CL.EXE; check for 
+            # 64-bit compiler later.  This allows 32-bit-only installs to appear  
+            # as installed, then throw an error at selection-time.  
+            # This is easier to debug than not listing the compiler.
+            #===================================================================
+
+            my $candidate_location = shift;
+            my $isvalid = 0;
+            if ($candidate_location ne "" &&  
+                -e "$candidate_location\\VC\\bin\\cl.exe") { 
+                $oldPath = $ENV{'PATH'};
+                $ENV{'PATH'} = "$candidate_location\\Common7\\IDE;$oldPath";
+                if (&correct_version("$candidate_location\\VC\\bin\\cl.exe","16.0")){ 
+                    $isvalid = 1;
+                }
+                $ENV{'PATH'} = "$oldPath";
+            }
+            return $isvalid;
+        };
+
+        # If the registry setting is not defined, then short circuit valid location tests.
+        if ($sdk_dir eq "") {
+          return;
+        }
+
+        # Search the default environment variable location.               
+        $env_location = $ENV{'VS100COMNTOOLS'}; 
+        $env_location =~ s|\\+Common7\\+Tools\\*$||i; 
+        $candidate_location = $env_location;
+        if (&$is_valid_root_fcn($candidate_location)) {
+            push(@valid_locations, $candidate_location);
+        }
+
+        # Search the registry. 
+        $registry_location = &$registry_lookup_fcn("SOFTWARE\\Microsoft\\VisualStudio\\10.0\\" .
+                                            "Setup\\VS", "ProductDir");
+        $candidate_location = $registry_location;
+        if (&$is_valid_root_fcn($candidate_location)) {
+            push(@valid_locations, $candidate_location);
+        }
+
+        # Search the default install location. 
+        $candidate_location = $default_location;
+        if (&$is_valid_root_fcn($candidate_location)) {
+            push(@valid_locations, $candidate_location);
+        }
+
+        return @valid_locations;
+    };
+
+    my $root_val = sub {
+        my $err_msg, $warn_msg;
+        my $base_directory = shift;
+        my $sdk_location = &$registry_lookup_fcn("SOFTWARE\\Microsoft\\Microsoft SDKs\\Windows\\v7.1" , 
+                                  "InstallationFolder");
+
+        if (!-e "$base_directory\\VC\\bin\\amd64\\cl.exe"||
+            $sdk_location eq "" ||
+            !-e "$sdk_location\\bin\\mt.exe"){
+            $err_msg = "\n" . 
+                  "*****************************************************************************\n" .
+                  "  Error: The Microsoft Windows Software Development Kit (SDK) installation is\n" .
+                  "         incomplete.  Please be sure that the .NET Framework is installed\n" .
+                  "         correctly before attempting to reinstall the SDK.\n" .
+                  "*****************************************************************************\n";
+        } else {
+            $warn_msg =  "\n" . 
+                  "***************************************************************************\n" .
+                  "  Warning: MEX-files generated using Microsoft Windows Software Development\n" .
+                  "           Kit (SDK) require that Microsoft Visual Studio 2010 run-time \n" .
+                  "           libraries be available on the computer they are run on.\n" .
+                  "           If you plan to redistribute your MEX-files to other MATLAB\n" .
+                  "           users, be sure that they have the run-time libraries.\n" . 
+                  "***************************************************************************\n";
+        }
+        
+        return ($err_msg, $warn_msg);
+    };
+
+# The link_val key is used to specify the location of the SDK
+
+    return {
+        "vendor_name"      => "Microsoft Software Development Kit (SDK)",
+        "version"          => "7.1",
+        "group_id"         => "MSSDK",
+        "serial"           => 7.1,
+        "root_var"         => "VSINSTALLDIR",
+        "optfile_name"     => "mssdk71opts.bat",
+        "default_location" => $default_location,
+        "language_handled" => \@language_handled,
+        "root_val"         => $root_val,
+        "link_val"         => $sdk_dir,
+        "locate"           => $locate_fcn,
+        };
+}
+1;
